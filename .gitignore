@@ -1,0 +1,53 @@
+# Gem builds
+*.gem
+
+# Bundler
+/.bundle/
+/vendor/bundle/
+
+# RSpec
+/.rspec_status
+/coverage/
+
+# Ruby version files
+.ruby-version
+.ruby-gemset
+
+# Test artifacts
+/test_*.log
+/rspec_*.log
+/*.log
+
+# Temporary files
+/tmp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# IDE files
+/.vscode/
+/.idea/
+
+# Test results
+/test_results.*
+/results.*
+/final_test_results.*
+
+# Development test files
+test_*.rb
+
+# Development documentation (not for public repo)
+.github/copilot-instructions.md
+
+# Database configuration (use environment variables instead)
+config/database.yml
+
+# Claude Code development instructions (contains development guidance)
+# CLAUDE.md

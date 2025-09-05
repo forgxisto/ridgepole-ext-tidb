@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  tidb:
+    image: pingcap/tidb:latest
+    container_name: ridgepole-tidb-test
+    ports:
+      - "14000:4000"
+      - "14080:10080"
+    environment:
+      - MYSQL_ROOT_PASSWORD=
+    command:
+      - --store=mocktikv
+      - --host=0.0.0.0
+      - --advertise-address=0.0.0.0
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 4000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  test:
+    build: .
+    depends_on:
+      - tidb
+    environment:
+      - TIDB_HOST=tidb
+      - TIDB_PORT=4000
+      - TIDB_USER=root
+      - TIDB_PASSWORD=
+      - TIDB_DATABASE=ridgepole_test
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: bundle exec rspec
