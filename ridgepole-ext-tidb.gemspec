@@ -37,6 +37,7 @@ Gem::Specification.new do |spec|
 
   # Development dependencies
   spec.add_development_dependency 'activerecord-trilogy-adapter'
+  spec.add_development_dependency 'mysql2'
   spec.add_development_dependency 'rake'
   spec.add_development_dependency 'rspec'
   spec.add_development_dependency 'rubocop'

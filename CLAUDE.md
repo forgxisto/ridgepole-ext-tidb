@@ -19,11 +19,11 @@ bundle install
 SKIP_TIDB_TESTS=1 bundle exec rspec
 
 # Full integration tests (requires Docker)
-docker-compose up -d
+docker compose up -d
 bundle exec rspec
 
 # Docker-based testing
-docker-compose run --rm test
+docker compose run --rm test
 
 # Run single test file
 bundle exec rspec spec/ridgepole/ext/tidb_spec.rb
@@ -37,8 +37,8 @@ bundle exec rake  # runs spec + rubocop
 
 ### TiDB Environment
 ```bash
-docker-compose up -d tidb
-docker-compose exec tidb mysql -u root -h 127.0.0.1 -P 4000 -e "CREATE DATABASE IF NOT EXISTS ridgepole_test"
+docker compose up -d tidb
+docker compose exec tidb mysql -u root -h 127.0.0.1 -P 4000 -e "CREATE DATABASE IF NOT EXISTS ridgepole_test"
 ```
 
 ## Architecture

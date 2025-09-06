@@ -8,31 +8,38 @@ require 'mutex_m'
 require 'bigdecimal'
 require 'benchmark'
 
-# Load trilogy and ActiveRecord
-require 'trilogy'
-require 'activerecord-trilogy-adapter'
+# Load mysql2 and ActiveRecord
+require 'mysql2'
 require 'active_record'
 
 require 'ridgepole'
-require 'ridgepole/ext/tidb'
+require 'ridgepole-ext-tidb'
 
 # Setup TiDB extension
+puts "🔧 Setting up TiDB extension in spec_helper..."
 Ridgepole::Ext::Tidb.setup!
+puts "🔧 TiDB extension setup completed in spec_helper"
+
+# Debug: Check if methods are actually added
+if defined?(ActiveRecord::ConnectionAdapters::Mysql2Adapter)
+  mysql2_methods = ActiveRecord::ConnectionAdapters::Mysql2Adapter.instance_methods
+  puts "🔍 Mysql2Adapter has tidb? method: #{mysql2_methods.include?(:tidb?)}"
+  puts "🔍 Mysql2Adapter has auto_random_column? method: #{mysql2_methods.include?(:auto_random_column?)}"
+else
+  puts "⚠️  Mysql2Adapter not defined"
+end
 
 # Test database configuration
 TEST_CONFIG = {
-  adapter: 'trilogy',
+  adapter: 'mysql2',
   host: ENV['TIDB_HOST'] || 'localhost',
-  port: (ENV['TIDB_PORT'] || 14000).to_i,
+  port: (ENV['TIDB_PORT'] || 4000).to_i,
   username: ENV['TIDB_USER'] || 'root',
   password: ENV['TIDB_PASSWORD'] || '',
   database: ENV['TIDB_DATABASE'] || 'ridgepole_test'
 }.freeze
 
 RSpec.configure do |config|
-  config.example_status_persistence_file_path = '.rspec_status'
-  config.disable_monkey_patching!
-
   config.expect_with :rspec do |c|
     c.syntax = :expect
   end
@@ -50,7 +57,7 @@ RSpec.configure do |config|
       ActiveRecord::Base.establish_connection(TEST_CONFIG)
       connection = ActiveRecord::Base.connection
 
-      test_tables = %w[users posts test_auto_random]
+      test_tables = %w[test_users test_posts test_auto_random]
       test_tables.each do |table|
         connection.execute("DROP TABLE IF EXISTS #{table}")
       rescue StandardError
@@ -68,22 +75,39 @@ def skip_unless_tidb
 
   # Test connection
   begin
+    puts "Connecting to TiDB: #{TEST_CONFIG[:host]}:#{TEST_CONFIG[:port]}"
     ActiveRecord::Base.establish_connection(TEST_CONFIG)
     connection = ActiveRecord::Base.connection
     connection.execute('SELECT 1')
 
-    # For development/testing purposes, we can simulate TiDB behavior
-    # even if we're not connected to actual TiDB
-    unless connection.tidb?
-      puts 'Warning: Not connected to TiDB, but running tests anyway for development'
-      # Override tidb? method for testing
-      connection.singleton_class.prepend(Module.new do
-        def tidb?
-          true
-        end
-      end)
+    # Check database version for debugging
+    version_result = connection.execute('SELECT VERSION()')
+    version = version_result.first[0] if version_result.respond_to?(:first)
+    puts "Connected to database version: #{version}"
+
+    # Debug: Check if tidb? method exists
+    puts "Connection class: #{connection.class}"
+    puts "tidb? method available: #{connection.respond_to?(:tidb?)}"
+
+    # 手動でアダプタ拡張を確実に実行
+    unless connection.respond_to?(:tidb?)
+      puts "🔧 Manually extending adapter at test time..."
+      Ridgepole::Ext::Tidb.extend_connection_adapter(connection)
     end
+
+    # Verify it's actually TiDB
+    tidb_result = connection.tidb?
+    puts "TiDB detection result: #{tidb_result}"
+
+    unless tidb_result
+      puts "❌ TiDB detection failed - not recognized as TiDB instance"
+      skip 'Not connected to TiDB instance'
+    end
+
+    puts "✅ Successfully connected to TiDB"
   rescue StandardError => e
+    puts "❌ Database connection failed: #{e.message}"
+    puts e.backtrace.first(5).join("\n") if e.backtrace
     skip "Database connection failed: #{e.message}"
   end
 end
