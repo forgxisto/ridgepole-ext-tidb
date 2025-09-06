@@ -8,6 +8,8 @@ module Ridgepole
       def self.setup!
         # SchemaDumperにもAUTO_RANDOM対応を追加
         extend_schema_dumper
+        # Hash#assert_valid_keysを拡張してauto_randomキーを許可
+        extend_hash_assert_valid_keys
       end      # 手動で接続アダプタを拡張するメソッド（外部から呼び出し可能）
       def self.ensure_connection_extended!
         return unless ActiveRecord::Base.connected?
@@ -23,6 +25,11 @@ module Ridgepole
 
         # 既に拡張済みかチェック
         return if adapter_class.method_defined?(:tidb?)
+
+        # Hash#assert_valid_keysを拡張してauto_randomキーを許可
+        extend_hash_assert_valid_keys
+        # TableDefinitionを拡張して:auto_randomオプションをサポート
+        extend_table_definition
 
         adapter_class.class_eval do
           # AUTO_RANDOMカラムの検出
@@ -64,7 +71,9 @@ module Ridgepole
           rescue => e
             puts "AUTO_RANDOM detection failed: #{e.message}"
             false
-          end          # TiDBかどうかの判定
+          end
+
+          # TiDBかどうかの判定
           def tidb?
             # VERSION()関数でTiDBを検出（キャッシュなし）
             version_info = select_value('SELECT VERSION()')
@@ -79,27 +88,21 @@ module Ridgepole
           # CREATE TABLE時のAUTO_RANDOM対応
           alias_method :create_table_without_auto_random, :create_table
           def create_table(table_name, **options, &block)
+            # :auto_randomキーを処理する前に、idオプションから取り除く
             if options.dig(:id, :auto_random) && tidb?
-              # AUTO_RANDOMを含むテーブル作成
-              sql = build_create_table_sql_with_auto_random(table_name, **options, &block)
-              execute(sql)
+              # auto_randomフラグを保存
+              auto_random_enabled = options[:id].delete(:auto_random)
+
+              # 通常のcreate_tableを呼び出してテーブル構造を作成
+              create_table_without_auto_random(table_name, **options, &block)
+
+              # AUTO_RANDOMを有効にするためにALTER TABLEを実行
+              if auto_random_enabled
+                execute("ALTER TABLE #{quote_table_name(table_name)} MODIFY COLUMN id BIGINT AUTO_RANDOM PRIMARY KEY")
+              end
             else
               create_table_without_auto_random(table_name, **options, &block)
             end
-          end
-
-          private
-
-          def build_create_table_sql_with_auto_random(table_name, **options, &block)
-            # 簡単な実装 - 実際にはより複雑になる
-            sql = "CREATE TABLE #{quote_table_name(table_name)} ("
-
-            if options[:id] && options[:id][:auto_random]
-              sql += "id BIGINT AUTO_RANDOM PRIMARY KEY"
-            end
-
-            sql += ") DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            sql
           end
         end
 
@@ -108,6 +111,11 @@ module Ridgepole
 
       def self.extend_activerecord_adapters
         puts "📦 Extending ActiveRecord adapters..."
+        # Hash#assert_valid_keysを拡張してauto_randomキーを許可
+        extend_hash_assert_valid_keys
+        # TableDefinitionを拡張して:auto_randomオプションをサポート
+        extend_table_definition
+
         # MySQL系アダプタにAUTO_RANDOMサポートを追加
         extend_adapter('ActiveRecord::ConnectionAdapters::Mysql2Adapter')
         extend_adapter('ActiveRecord::ConnectionAdapters::TrilogyAdapter')
@@ -128,6 +136,11 @@ module Ridgepole
           puts "⚠️  Skipping #{adapter_name}: #{e.message}"
           return
         end
+
+        # Hash#assert_valid_keysを拡張してauto_randomキーを許可
+        extend_hash_assert_valid_keys
+        # TableDefinitionを拡張して:auto_randomオプションをサポート
+        extend_table_definition
 
         # 一時的にputsを外して動作確認
         adapter_class.class_eval do
@@ -163,27 +176,21 @@ module Ridgepole
           # CREATE TABLE時のAUTO_RANDOM対応
           alias_method :create_table_without_auto_random, :create_table
           def create_table(table_name, **options, &block)
+            # :auto_randomキーを処理する前に、idオプションから取り除く
             if options.dig(:id, :auto_random) && tidb?
-              # AUTO_RANDOMを含むテーブル作成
-              sql = build_create_table_sql_with_auto_random(table_name, **options, &block)
-              execute(sql)
+              # auto_randomフラグを保存
+              auto_random_enabled = options[:id].delete(:auto_random)
+
+              # 通常のcreate_tableを呼び出してテーブル構造を作成
+              create_table_without_auto_random(table_name, **options, &block)
+
+              # AUTO_RANDOMを有効にするためにALTER TABLEを実行
+              if auto_random_enabled
+                execute("ALTER TABLE #{quote_table_name(table_name)} MODIFY COLUMN id BIGINT AUTO_RANDOM PRIMARY KEY")
+              end
             else
               create_table_without_auto_random(table_name, **options, &block)
             end
-          end
-
-          private
-
-          def build_create_table_sql_with_auto_random(table_name, **options, &block)
-            # 簡単な実装 - 実際にはより複雑になる
-            sql = "CREATE TABLE #{quote_table_name(table_name)} ("
-
-            if options[:id] && options[:id][:auto_random]
-              sql += "id BIGINT AUTO_RANDOM PRIMARY KEY"
-            end
-
-            sql += ") DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            sql
           end
         end
 
@@ -210,6 +217,49 @@ module Ridgepole
         end
       rescue NameError
         # SchemaDumperが利用できない場合はスキップ
+      end
+
+      def self.extend_table_definition
+        return unless defined?(ActiveRecord::ConnectionAdapters::TableDefinition)
+
+        # TableDefinitionを拡張して:auto_randomオプションをサポート
+        ActiveRecord::ConnectionAdapters::TableDefinition.class_eval do
+          # カラム作成時のオプション検証を拡張
+          alias_method :column_without_auto_random, :column
+          def column(name, type, **options)
+            # :auto_randomオプションが含まれている場合は、それを取り除いて後で処理
+            if options.key?(:auto_random)
+              auto_random_value = options.delete(:auto_random)
+              # カラム定義にauto_randomの情報を保存（後でcreate_tableで使用）
+              @auto_random_columns ||= {}
+              @auto_random_columns[name.to_s] = auto_random_value
+            end
+            column_without_auto_random(name, type, **options)
+          end
+
+          # auto_randomカラムの情報を取得するメソッド
+          def auto_random_columns
+            @auto_random_columns ||= {}
+          end
+        end
+      rescue NameError => e
+        puts "⚠️  Could not extend TableDefinition: #{e.message}"
+      end
+
+      def self.extend_hash_assert_valid_keys
+        # Hashクラスを拡張して、auto_randomキーを有効なキーとして認識させる
+        Hash.class_eval do
+          alias_method :assert_valid_keys_without_auto_random, :assert_valid_keys
+          def assert_valid_keys(*valid_keys)
+            # auto_randomキーが含まれている場合は、それを有効なキーとして追加
+            if keys.include?(:auto_random) && !valid_keys.include?(:auto_random)
+              valid_keys = valid_keys + [:auto_random]
+            end
+            assert_valid_keys_without_auto_random(*valid_keys)
+          end
+        end
+      rescue NameError => e
+        puts "⚠️  Could not extend Hash#assert_valid_keys: #{e.message}"
       end
     end
   end
