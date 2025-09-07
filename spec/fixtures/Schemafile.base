@@ -1,0 +1,9 @@
+require "ridgepole/ext_tidb"
+
+create_table "users",
+  id: :bigint, primary_key: "id",
+  auto_random: 5,
+  auto_random_base: 100_000,
+  options: "DEFAULT CHARSET=utf8mb4" do |t|
+  t.string :name, null: false
+end

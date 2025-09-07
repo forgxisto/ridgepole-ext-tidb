@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require_relative 'lib/ridgepole/ext/tidb/version'
+require_relative 'lib/ridgepole/ext_tidb/version'
 
 Gem::Specification.new do |spec|
   spec.name = 'ridgepole-ext-tidb'
-  spec.version = Ridgepole::Ext::Tidb::VERSION
+  spec.version = Ridgepole::ExtTidb::VERSION
   spec.authors = ['ikad']
   spec.email = ['info@forgxisto.com']
 
@@ -33,15 +33,15 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   # Dependencies
-  spec.add_dependency 'ridgepole'
+  spec.add_dependency 'ridgepole', ">= 3.0"
 
   # Development dependencies
-  spec.add_development_dependency 'activerecord-trilogy-adapter'
-  spec.add_development_dependency 'mysql2'
   spec.add_development_dependency 'rake'
   spec.add_development_dependency 'rspec'
   spec.add_development_dependency 'rubocop'
   spec.add_development_dependency 'trilogy'
+  spec.add_development_dependency 'activerecord', '>= 8.0'
+  spec.add_development_dependency 'debug'
 
   # Ruby 3.4+ compatibility
   spec.add_development_dependency 'benchmark'

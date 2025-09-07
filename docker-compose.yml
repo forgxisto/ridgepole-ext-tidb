@@ -1,34 +1,9 @@
 services:
   tidb:
-    image: pingcap/tidb:v7.5.0
-    container_name: ridgepole-tidb-test
+    image: pingcap/tidb:latest
+    command: ["--store=mocktikv", "--log-file="]
     ports:
-      - "14000:4000"
-      - "14080:10080"
-    command:
-      - --store=unistore
-      - --host=0.0.0.0
-      - --path=""
-    healthcheck:
-      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/4000' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-
-  test:
-    build: .
-    depends_on:
-      tidb:
-        condition: service_healthy
+      - "14000:4000"   # MySQL protocol
     environment:
-      - TIDB_HOST=tidb
-      - TIDB_PORT=4000
-      - TIDB_USER=root
-      - TIDB_PASSWORD=
-      - TIDB_DATABASE=ridgepole_test
-    working_dir: /app
-    volumes:
-      - .:/app
-    command: bundle exec rspec
+      # TiDB は root 無パスで入れる
+      - TZ=UTC
