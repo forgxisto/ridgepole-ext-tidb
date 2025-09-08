@@ -1,7 +1,7 @@
 # Ridgepole::Ext::Tidb
 
 ![Tests](https://github.com/forgxisto/ridgepole-ext-tidb/actions/workflows/test.yml/badge.svg)
-![Ruby Version](https://img.shields.io/badge/ruby-3.1%2B-red)
+![Ruby Version](https://img.shields.io/badge/ruby-3.2%2B-red)
 ![TiDB Compatibility](https://img.shields.io/badge/TiDB-v7.5.0%2B-blue)
 
 TiDBの`AUTO_RANDOM`カラム属性をサポートするRidgepole拡張機能です。この拡張により、TiDBの分散IDジェネレーション機能をSchemafile管理に統合できます。
@@ -14,7 +14,7 @@ TiDBの`AUTO_RANDOM`カラム属性をサポートするRidgepole拡張機能で
 - **冪等性**: apply→export→diff→applyの繰り返しでも差分ゼロを維持（ALTERは不使用）
 - **TiDB判定**: 接続先がTiDBかどうかを自動判定
 - **MySQL互換**: mysql2 / trilogy アダプターの両方に対応
-- **Ruby 3.1+ 対応**
+- **Ruby 3.2+ 対応**
 
 ## インストール
 
@@ -214,7 +214,7 @@ CREATE TABLE users (
 
 ### 前提条件
 
-- Ruby 3.1 以上
+- Ruby 3.2 以上
 - TiDB 4.0 以上 (テスト用)
 - Docker (テスト環境用)
 

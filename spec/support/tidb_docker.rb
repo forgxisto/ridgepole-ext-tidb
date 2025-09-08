@@ -6,19 +6,24 @@ module TiDBDocker
 
   def ensure_up!
     run!("docker compose up -d tidb")
-    wait_until(120, 2) do
-      tcp_open?("127.0.0.1", 14000) && docker_mysql_ok?
-    end
+    # ポートが開いても MySQL ハンドシェイク前だと失敗するため、
+    # Ruby 側（trilogy または mysql2）で実クエリが通ることを確認して待機する。
+    wait_until(180, 2) { ruby_mysql_ok? }
     puts "[TiDBDocker] ready on 127.0.0.1:14000"
   end
 
-  def docker_mysql_ok?
-    system(
-      "docker", "run", "--rm", "mysql:8.0",
-      "mysql", "-h", "host.docker.internal", "-P14000", "-uroot",
-      "-e", "SELECT 1",
-      out: File::NULL, err: File::NULL
-    )
+  # Ruby（ホスト側）から TiDB へ接続できるかを確認
+  def ruby_mysql_ok?
+    # trilogy のみを使用（CI/ローカルともに mysql2 へフォールバックしない）
+    begin
+      require 'trilogy'
+      c = Trilogy.new(host: '127.0.0.1', port: 14000, username: 'root')
+      c.query('SELECT 1')
+      c.close
+      true
+    rescue Exception
+      false
+    end
   end
 
   def down!
