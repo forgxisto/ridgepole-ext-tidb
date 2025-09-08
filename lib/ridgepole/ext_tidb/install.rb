@@ -21,8 +21,8 @@ module Ridgepole
 
       def self.apply_activerecord_patches
         extend_connection_adapters
-        extend_schema_dumper
-        extend_table_definition
+        # SchemaDumper への直接パッチは不要（dump は DumpPatch が担当）
+        # TableDefinition 拡張も不要（Hash#assert_valid_keys 拡張で回避）
         install_connection_hook
         extend_ridgepole_client
       end
@@ -83,7 +83,7 @@ module Ridgepole
           end
         end
 
-        # 動的に SchemaCreation 候補へも適用（AR 8 以降の名前空間揺れ対策）
+        # 名前空間の揺れに備え、ConnectionAdapters 配下の SchemaCreation すべてに適用
         begin
           ObjectSpace.each_object(Class) do |klass|
             name = klass.name rescue nil
@@ -95,7 +95,7 @@ module Ridgepole
           # noop
         end
 
-        # AbstractMysqlAdapter のサブクラス（mysql2/trilogy 派生）全てにも Detector/TableOptions を適用
+        # AbstractMysqlAdapter のサブクラスにも Detector/TableOptions を適用（ロード順対策）
         begin
           if defined?(ActiveRecord::ConnectionAdapters::AbstractMysqlAdapter)
             ObjectSpace.each_object(Class) do |klass|
@@ -131,48 +131,8 @@ module Ridgepole
         Rails.logger.debug "Could not install establish_connection hook: #{e.message}" if defined?(Rails)
       end
 
-      def self.extend_schema_dumper
-        # ベースの SchemaDumper
-        if defined?(ActiveRecord::SchemaDumper)
-          ActiveRecord::SchemaDumper.prepend(ExportPatch) unless ActiveRecord::SchemaDumper < ExportPatch
-        end
-
-        # アダプタ固有の SchemaDumper（MySQL/Trilogy 等）にも広く適用
-        begin
-          ObjectSpace.each_object(Class) do |klass|
-            name = klass.name rescue nil
-            next unless name && name.start_with?("ActiveRecord::ConnectionAdapters")
-            next unless name.end_with?("::SchemaDumper")
-            klass.prepend(ExportPatch) unless klass < ExportPatch
-          end
-        rescue StandardError
-          # noop
-        end
-      end
-
-      def self.extend_table_definition
-        return unless defined?(ActiveRecord::ConnectionAdapters::TableDefinition)
-
-        # 既に拡張済みかチェック
-        table_def_class = ActiveRecord::ConnectionAdapters::TableDefinition
-        return if table_def_class.method_defined?(:column_with_auto_random)
-
-        table_def_class.class_eval do
-          alias_method :column_without_auto_random, :column
-          def column(name, type, **options)
-            # auto_random キーはそのまま渡す（Hash#assert_valid_keys を拡張済み）
-            column_without_auto_random(name, type, **options)
-          end
-          alias_method :column_with_auto_random, :column
-
-          # auto_randomカラムの情報を取得するメソッド
-          def auto_random_columns
-            @auto_random_columns ||= {}
-          end
-        end
-      rescue NameError => e
-        Rails.logger.debug "Could not extend TableDefinition: #{e.message}" if defined?(Rails)
-      end
+      # extend_schema_dumper: dump は DumpPatch に委譲するため不要
+      # extend_table_definition: Hash#assert_valid_keys で未知キーを許すため不要
 
       def self.extend_ridgepole_client
         return unless defined?(Ridgepole::Client)

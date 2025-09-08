@@ -8,12 +8,13 @@ TiDBの`AUTO_RANDOM`カラム属性をサポートするRidgepole拡張機能で
 
 ## 主な機能
 
-- **AUTO_RANDOM検出**: TiDBのAUTO_RANDOMカラムを自動検出
-- **TiDB判定**: データベースがTiDBかどうかを自動判定
-- **MySQL互換**: mysql2とtrilogyアダプター両方に対応
-- **スキーマダンプ対応**: AUTO_RANDOM属性をRidgefileに正確に出力
-- **冪等性保証**: スキーマ適用の際の差分を正確に計算
-- **Ruby 3.1+ 対応**: 最新のRubyバージョンに完全対応
+- **AUTO_RANDOM適用**: CREATE時に`AUTO_RANDOM(n)`を列定義へ付与し、`AUTO_INCREMENT`を抑止
+- **AUTO_RANDOM_BASE**: テーブルオプションに`AUTO_RANDOM_BASE=<n>`を付与
+- **スキーマダンプ対応**: `create_table`のオプションへ`auto_random:`/`auto_random_base:`を出力（往復一致）
+- **冪等性**: apply→export→diff→applyの繰り返しでも差分ゼロを維持（ALTERは不使用）
+- **TiDB判定**: 接続先がTiDBかどうかを自動判定
+- **MySQL互換**: mysql2 / trilogy アダプターの両方に対応
+- **Ruby 3.1+ 対応**
 
 ## インストール
 
@@ -41,10 +42,7 @@ $ gem install ridgepole-ext-tidb
 
 ```ruby
 require 'ridgepole'
-require 'ridgepole-ext-tidb'
-
-# TiDB拡張をセットアップ（ActiveRecord読み込み後）
-Ridgepole::Ext::Tidb.setup!
+require 'ridgepole/ext_tidb'
 
 # Ridgepoleクライアントを設定
 client = Ridgepole::Client.new({
@@ -61,22 +59,25 @@ client = Ridgepole::Client.new({
 
 ```ruby
 # Schemafile
-create_table "users", id: { type: :bigint, auto_random: true } do |t|
+require "ridgepole/ext_tidb"
+
+# 1) テーブルレベルでAUTO_RANDOMとAUTO_RANDOM_BASEを指定
+create_table "users",
+  id: :bigint,
+  auto_random: 5,
+  auto_random_base: 100_000,
+  options: "DEFAULT CHARSET=utf8mb4" do |t|
   t.string :name, null: false
-  t.string :email, null: false
-  t.timestamps
 end
 
-create_table "posts", force: :cascade do |t|
-  t.bigint :id, auto_random: true, primary_key: true
-  t.bigint :user_id, null: false
+# 2) 手動PK（カラム側でAUTO_RANDOMを指定）
+create_table "events", id: false, options: "DEFAULT CHARSET=utf8mb4" do |t|
+  t.bigint :id, primary_key: true, null: false, auto_random: 6
   t.string :title, null: false
-  t.text :content
-  t.timestamps
 end
 ```
 
-**注意**: 現在の実装では、`auto_random: true`オプションはスキーマダンプ時に出力されますが、`create_table`でのテーブル作成機能は基本実装のみです。実際のテーブル作成は標準のDDLを使用してください。
+出力（export）は`create_table`のオプションに`auto_random:`/`auto_random_base:`を含めて往復一致となります（ALTERは使用しません）。
 
 ### CLI使用例
 
@@ -102,11 +103,10 @@ $ bundle exec ridgepole -c config/database.yml -E development --export -o Schema
 
 ## 動作確認済み環境
 
-- **TiDB**: v7.5.0 (安定版)
-- **Ruby**: 3.1+
-- **ActiveRecord**: 7.0+
-- **Ridgepole**: 3.0.4+
-- **アダプター**: mysql2, trilogy
+- TiDB: v7.5.0 以降
+- ActiveRecord: 7 / 8 系
+- Ridgepole: 3.0.4 以降
+- アダプター: mysql2 / trilogy
 
 ## データベース設定
 
@@ -154,7 +154,8 @@ connection.auto_random_column?('users', 'id')  # => true/false
 
 ### 3. スキーマダンプ対応
 
-既存のAUTO_RANDOMテーブルからSchemafileを生成する際、`auto_random: true`オプションが正しく出力されます。
+既存テーブルからのダンプ時、SHOW CREATE を解析して `create_table` のオプションに
+`auto_random:` と `auto_random_base:` を出力します。apply→export→diff→apply の繰り返しでも差分は発生しません。
 
 ## テスト結果例
 
@@ -227,30 +228,20 @@ $ bundle install
 
 ### テスト実行
 
-```bash
-# 基本機能テスト（TiDBなしでも実行可能）
-$ SKIP_TIDB_TESTS=1 bundle exec rspec
+このリポジトリのRSpecは、実行時に自動で TiDB コンテナ（docker compose）を起動・停止します。事前の手動起動は不要です。
 
-# TiDB統合テスト（Dockerが必要）
-$ docker compose up -d tidb
-$ bundle exec rspec
-
-# Docker環境でのテスト
-$ docker compose run --rm test
-```
-
-### TiDBテスト環境
-
-TiDB 7.5.0を使用したテスト環境が用意されています：
+前提: Docker と docker compose が使用可能で、ポート `14000` が空いていること。
 
 ```bash
-# TiDBを起動
-$ docker compose up -d tidb
+# 統合テスト（TiDBを自動起動）
+$ bundle exec rspec --format documentation
 
-# テストを実行
-$ docker compose run --rm test
+# アダプタを切り替えたい場合（デフォルトは trilogy）
+# ※ mysql2 を使う場合は、別途 mysql2 をインストールしてください
+$ AR_ADAPTER=mysql2 bundle exec rspec --format documentation
 ```
-```
+
+ヒント: コンテナを手動で起動しておきたい場合は `docker compose up -d tidb` を先に実行しても構いません（テストはそのまま動作します）。
 
 ## Contributing
 

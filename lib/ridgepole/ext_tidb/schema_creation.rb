@@ -26,6 +26,7 @@ module Ridgepole
 
         sql
       end
+
       # APPLY: カラムに AUTO_RANDOM(n) を追加（PRIMARY KEY の有無に関わらず列側に付与）
       def visit_ColumnDefinition(o)
         return super unless tidb?
@@ -41,7 +42,6 @@ module Ridgepole
             conn = instance_variable_get(:@conn)
             if conn.instance_variable_defined?(:@tidb_pending_auto_random_pk_bits)
               auto_random_value = conn.instance_variable_get(:@tidb_pending_auto_random_pk_bits)
-              # 一度使ったら破棄
               begin
                 conn.remove_instance_variable(:@tidb_pending_auto_random_pk_bits)
               rescue StandardError
